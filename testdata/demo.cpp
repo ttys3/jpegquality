@@ -23,6 +23,11 @@ JPEG Quality : 73
 #include "jpeglib.h"
 #include <setjmp.h>
 
+#ifdef _WIN
+    #include <stdint.h>
+    #define u_int8_t uint8_t
+#endif
+
 //标准明度量化表
 static const unsigned int std_luminance_quant_tbl[DCTSIZE2] = {
 16,  11,  10,  16,  24,  40,  51,  61,
