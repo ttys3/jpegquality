@@ -123,8 +123,8 @@ func (this *jpegReader) readQuality() (q int, err error) {
 			return
 		}
 		var (
-			length, index int
-			sign          = make([]byte, 2)
+			length, tableindex int
+			sign                         = make([]byte, 2)
 			//qualityAvg    = make([]float64, 3)
 		)
 		_, err = this.rs.Read(sign)
@@ -133,6 +133,7 @@ func (this *jpegReader) readQuality() (q int, err error) {
 			return
 		}
 
+		// first two bytes is length
 		//ref to func (d *decoder) decode(r io.Reader, configOnly bool) (image.Image, error) {
 		length = int(sign[0])<<8 + int(sign[1]) - 2
 		if length < 0 {
@@ -140,7 +141,7 @@ func (this *jpegReader) readQuality() (q int, err error) {
 			return
 		}
 
-		// 0xdb Define Quantization Table.
+		// 0xdb: Define Quantization Table.
 		if (mark & 0xff) != dqtMarker { // not a quantization table
 			_, err = this.rs.Seek(int64(length), 1)
 			if err != nil {
@@ -157,78 +158,90 @@ func (this *jpegReader) readQuality() (q int, err error) {
 			return
 		}
 
-		log.Printf("length %d", length)
-		log.Print("Quantization table")
+		log.Printf("quantization table length %d", length)
 
 		var tabuf = make([]byte, length)
-		_, err = this.rs.Read(tabuf)
-		if err != nil {
-			log.Printf("read err %s", err)
+		n, e := this.rs.Read(tabuf)
+		if e != nil {
+			log.Printf("read err %s", e)
+			err = e
 			return
+		} else {
+			log.Printf("read bytes: %d", n)
 		}
 
-		//tableindex
-		index = int(tabuf[0] & 0x0f)
-
-		//we only process DQT
-		if index != 0 {
-			continue
-		}
 
 		var allones int
 		var cumsf, cumsf2 float64
-		buf := tabuf[0:65]
+		buf := tabuf[0:n]
 
-		//tableindex
-		index = int(buf[0] & 0x0f)
-		//precision: (c>>4) ? 16 : 8
-		precision := 8
-		if int8(buf[0])>>4 > 0 {
-			precision = 16
-		}
+		var reftable [64]int
 
-		reftable := deftabs[index]
-		log.Printf("  Precision=%d; Table index=%d (%s)\n", precision, index, getTableName(index))
+		a := 0
+		for ;a < n; {
+			//tableindex
+			tableindex = int(tabuf[a] & 0x0f)
+			a++
+			//precision: (c>>4) ? 16 : 8
+			precision := 8
+			if int8(buf[0])>>4 != 0 {
+				precision = 16
+			}
+			log.Printf("DQT: table index %d (%s), precision: %d\n", tableindex, getTableName(tableindex), precision)
 
-		a := 2
-		for coefindex := 0; coefindex < 64 && a < length; coefindex++ {
-			var val int
+			if tableindex < 2 {
+				reftable = deftabs[tableindex]
+			}
+			// Read in the table, compute statistics relative to reference table
+			if (a+64 > n) {
+				err = fmt.Errorf("DQT section too short")
+				log.Println(err)
+				return
+			}
+			for coefindex := 0; coefindex < 64 && a < n; coefindex++ {
+				var val int
 
-			if index>>4 != 0 {
-				temp := int(buf[a])
-				a++
-				temp *= 256;
-				val = int(buf[a]) + temp;
-				a++
-			} else {
-				val = int(buf[a])
-				a++
+				if tableindex>>4 != 0 {
+					temp := int(buf[a])
+					a++
+					temp *= 256;
+					val = int(buf[a]) + temp;
+					a++
+				} else {
+					val = int(buf[a])
+					a++
+				}
+
+				// scaling factor in percent
+				x := 100.0 * float64(val) / float64(reftable[coefindex])
+				cumsf += x;
+				cumsf2 += x * x;
+				// separate check for all-ones table (Q 100)
+				if val != 1 {
+					allones = 0
+				}
 			}
 
-			// scaling factor in percent
-			x := 100.0 * float64(val) / float64(reftable[coefindex])
-			cumsf += x;
-			cumsf2 += x * x;
-			// separate check for all-ones table (Q 100)
-			if val != 1 {
-				allones = 0
+			if 0 != len(reftable) { // terse output includes quality
+				var qual float64
+				cumsf /= 64.0; // mean scale factor
+				cumsf2 /= 64.0;
+				//var2 = cumsf2 - (cumsf * cumsf); // variance
+				if allones == 1 { // special case for all-ones table
+					qual = 100.0;
+				} else if (cumsf <= 100.0) {
+					qual = (200.0 - cumsf) / 2.0;
+				} else {
+					qual = 5000.0 / cumsf
+				}
+
+				if tableindex == 0 {
+					q = (int)(qual + 0.5)
+					log.Printf("aver_quality %#v", q)
+					return
+				}
 			}
 		}
-
-		var qual float64
-		cumsf /= 64.0; // mean scale factor
-		cumsf2 /= 64.0;
-		//var2 = cumsf2 - (cumsf * cumsf); // variance
-		if allones == 1 { // special case for all-ones table
-			qual = 100.0;
-		} else if (cumsf <= 100.0) {
-			qual = (200.0 - cumsf) / 2.0;
-		} else {
-			qual = 5000.0 / cumsf
-		}
-		q = (int)(qual + 0.5)
-		log.Printf("aver_quality %#v", q)
-		break
 	}
 	return
 }

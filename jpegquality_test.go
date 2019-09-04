@@ -19,7 +19,7 @@ func TestJpegQuality(t *testing.T) {
 
 	//infact it is 73
 	t.Logf("jpeg quality %d", j.Quality())
-	if j.Quality() != 72 {
+	if j.Quality() != 73 {
 		t.FailNow()
 	}
 }
