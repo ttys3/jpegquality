@@ -4,10 +4,15 @@
 //resut: quality: 75
 
 /*
-
+ImageMagick
 ❯ identify -verbose ./testdata/Landscape_3.jpg | grep -i Quality
   Quality: 73
 
+GraphicsMagick
+$ gm identify -verbose ./testdata/Landscape_3.jpg | grep -i Quality                                                                                                                                                  (master ?)
+  JPEG-Quality: 73
+
+jhead
 ❯ jhead testdata/Landscape_3.jpg
 File name    : testdata/Landscape_3.jpg
 File size    : 348796 bytes
