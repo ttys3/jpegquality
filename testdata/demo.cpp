@@ -93,6 +93,6 @@ int ReadJpegQuality(const char *filename)
 
 int main(int argc,char** argv)
 {
-  printf("quality: %d\n",ReadJpegQuality("./testdata/Landscape_3.jpg"));
+  printf("quality: %d\n",ReadJpegQuality("./Landscape_3.jpg"));
   return 0; 
 }
